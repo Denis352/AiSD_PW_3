@@ -1,24 +1,37 @@
-﻿#include <iostream>
+#include <iostream>
 #include <fstream>
 #include <string>
-#include <queue>
 #include <stack>
+#include <queue>
 #include <vector>
+#include <algorithm>
+#include <sstream>
 #include <stdexcept>
 
 using namespace std;
 
-struct TreeNode {
+struct BinaryTreeNode {
     int value;
-    TreeNode* left;
-    TreeNode* right;
-    TreeNode(int val) : value(val), left(nullptr), right(nullptr) {}
+    BinaryTreeNode* left;
+    BinaryTreeNode* right;
+
+    BinaryTreeNode(int val) : value(val), left(nullptr), right(nullptr) {}
+};
+
+struct AVLTreeNode {
+    int value;
+    AVLTreeNode* left;
+    AVLTreeNode* right;
+    int height;
+
+    AVLTreeNode(int val) : value(val), left(nullptr), right(nullptr), height(1) {}
 };
 
 class BinaryTree {
-    TreeNode* root;
+private:
+    BinaryTreeNode* root;
 
-    void clear(TreeNode* node) {
+    void clear(BinaryTreeNode* node) {
         if (node) {
             clear(node->left);
             clear(node->right);
@@ -26,413 +39,567 @@ class BinaryTree {
         }
     }
 
-    void dfsRecursive(TreeNode* node, vector<int>& result) {
-        if (!node) return;
-        result.push_back(node->value);
-        dfsRecursive(node->left, result);
-        dfsRecursive(node->right, result);
+    BinaryTreeNode* parseBracketString(const string& s, size_t& pos) {
+        while (pos < s.length() && s[pos] == ' ') pos++;
+
+        if (pos >= s.length()) {
+            throw invalid_argument("Unexpected end of string");
+        }
+
+        if (s[pos] == '(') {
+            pos++;
+
+            while (pos < s.length() && s[pos] == ' ') pos++;
+
+            if (pos >= s.length()) {
+                throw invalid_argument("Unexpected end of string after '('");
+            }
+
+            int value = 0;
+            bool negative = false;
+
+            if (s[pos] == '-') {
+                negative = true;
+                pos++;
+            }
+
+            if (!isdigit(s[pos])) {
+                throw invalid_argument("Expected number");
+            }
+
+            while (pos < s.length() && isdigit(s[pos])) {
+                value = value * 10 + (s[pos] - '0');
+                pos++;
+            }
+
+            if (negative) {
+                value = -value;
+            }
+
+            BinaryTreeNode* node = new BinaryTreeNode(value);
+
+            while (pos < s.length() && s[pos] == ' ') pos++;
+
+            if (pos < s.length() && s[pos] == '(') {
+                node->left = parseBracketString(s, pos);
+            }
+
+            while (pos < s.length() && s[pos] == ' ') pos++;
+
+            if (pos < s.length() && s[pos] == '(') {
+                node->right = parseBracketString(s, pos);
+            }
+
+            while (pos < s.length() && s[pos] == ' ') pos++;
+
+            if (pos >= s.length() || s[pos] != ')') {
+                throw invalid_argument("Expected closing bracket");
+            }
+
+            pos++;
+            return node;
+        }
+        else {
+            throw invalid_argument("Expected opening bracket");
+        }
+    }
+
+    void depthFirstTraversalRecursive(BinaryTreeNode* node, vector<int>& result) {
+        if (node) {
+            result.push_back(node->value);
+            depthFirstTraversalRecursive(node->left, result);
+            depthFirstTraversalRecursive(node->right, result);
+        }
     }
 
 public:
     BinaryTree() : root(nullptr) {}
-    ~BinaryTree() { clear(root); }
 
-    void setRoot(TreeNode* newRoot) { root = newRoot; }
-    TreeNode* getRoot() const { return root; }
+    ~BinaryTree() {
+        clear(root);
+    }
 
-    vector<int> dfs() {
+    bool buildFromBracketString(const string& bracketString) {
+        try {
+            if (bracketString.empty()) {
+                throw invalid_argument("Empty string");
+            }
+
+            for (char c : bracketString) {
+                if (!isdigit(c) && c != '(' && c != ')' && c != ' ' && c != '-') {
+                    throw invalid_argument("Invalid characters in string");
+                }
+            }
+
+            stack<char> brackets;
+            for (char c : bracketString) {
+                if (c == '(') {
+                    brackets.push(c);
+                }
+                else if (c == ')') {
+                    if (brackets.empty()) {
+                        throw invalid_argument("Unbalanced brackets");
+                    }
+                    brackets.pop();
+                }
+            }
+
+            if (!brackets.empty()) {
+                throw invalid_argument("Unbalanced brackets");
+            }
+
+            size_t pos = 0;
+            root = parseBracketString(bracketString, pos);
+
+            while (pos < bracketString.length() && bracketString[pos] == ' ') pos++;
+            if (pos < bracketString.length()) {
+                throw invalid_argument("Extra characters at end of string");
+            }
+
+            return true;
+
+        }
+        catch (const exception& e) {
+            cout << "Error building tree: " << e.what() << endl;
+            clear(root);
+            root = nullptr;
+            return false;
+        }
+    }
+
+    vector<int> depthFirstTraversal() {
         vector<int> result;
-        dfsRecursive(root, result);
+        depthFirstTraversalRecursive(root, result);
         return result;
     }
+
+    BinaryTreeNode* getRoot() const { return root; }
 };
 
 class AVLTree {
-    struct AVLNode {
-        int value;
-        AVLNode* left;
-        AVLNode* right;
-        int height;
-        AVLNode(int val) : value(val), left(nullptr), right(nullptr), height(1) {}
-    };
+private:
+    AVLTreeNode* root;
 
-    AVLNode* root;
-
-    int height(AVLNode* node) { return node ? node->height : 0; }
-
-    int balanceFactor(AVLNode* node) {
-        return node ? height(node->left) - height(node->right) : 0;
+    int getHeight(AVLTreeNode* node) {
+        return node ? node->height : 0;
     }
 
-    void updateHeight(AVLNode* node) {
-        if (node) node->height = 1 + max(height(node->left), height(node->right));
+    int getBalance(AVLTreeNode* node) {
+        return node ? getHeight(node->left) - getHeight(node->right) : 0;
     }
 
-    AVLNode* rotateRight(AVLNode* y) {
-        AVLNode* x = y->left;
-        y->left = x->right;
+    void updateHeight(AVLTreeNode* node) {
+        if (node) {
+            node->height = 1 + max(getHeight(node->left), getHeight(node->right));
+        }
+    }
+
+    AVLTreeNode* rotateRight(AVLTreeNode* y) {
+        AVLTreeNode* x = y->left;
+        AVLTreeNode* T2 = x->right;
+
         x->right = y;
+        y->left = T2;
+
         updateHeight(y);
         updateHeight(x);
+
         return x;
     }
 
-    AVLNode* rotateLeft(AVLNode* x) {
-        AVLNode* y = x->right;
-        x->right = y->left;
+    AVLTreeNode* rotateLeft(AVLTreeNode* x) {
+        AVLTreeNode* y = x->right;
+        AVLTreeNode* T2 = y->left;
+
         y->left = x;
+        x->right = T2;
+
         updateHeight(x);
         updateHeight(y);
+
         return y;
     }
 
-    AVLNode* balance(AVLNode* node) {
-        updateHeight(node);
-        int bf = balanceFactor(node);
-
-        if (bf > 1) {
-            if (balanceFactor(node->left) < 0) node->left = rotateLeft(node->left);
-            return rotateRight(node);
+    AVLTreeNode* insert(AVLTreeNode* node, int value) {
+        if (!node) {
+            return new AVLTreeNode(value);
         }
-        if (bf < -1) {
-            if (balanceFactor(node->right) > 0) node->right = rotateRight(node->right);
-            return rotateLeft(node);
-        }
-        return node;
-    }
-
-    AVLNode* insertRecursive(AVLNode* node, int value) {
-        if (!node) return new AVLNode(value);
-
-        if (value < node->value) node->left = insertRecursive(node->left, value);
-        else if (value > node->value) node->right = insertRecursive(node->right, value);
-        else return node;
-
-        return balance(node);
-    }
-
-    AVLNode* findMin(AVLNode* node) {
-        while (node && node->left) node = node->left;
-        return node;
-    }
-
-    AVLNode* deleteRecursive(AVLNode* node, int value) {
-        if (!node) return nullptr;
 
         if (value < node->value) {
-            node->left = deleteRecursive(node->left, value);
+            node->left = insert(node->left, value);
         }
         else if (value > node->value) {
-            node->right = deleteRecursive(node->right, value);
+            node->right = insert(node->right, value);
+        }
+        else {
+            return node;
+        }
+
+        updateHeight(node);
+
+        int balance = getBalance(node);
+
+        if (balance > 1 && value < node->left->value) {
+            return rotateRight(node);
+        }
+
+        if (balance < -1 && value > node->right->value) {
+            return rotateLeft(node);
+        }
+
+        if (balance > 1 && value > node->left->value) {
+            node->left = rotateLeft(node->left);
+            return rotateRight(node);
+        }
+
+        if (balance < -1 && value < node->right->value) {
+            node->right = rotateRight(node->right);
+            return rotateLeft(node);
+        }
+
+        return node;
+    }
+
+    AVLTreeNode* minValueNode(AVLTreeNode* node) {
+        AVLTreeNode* current = node;
+        while (current && current->left) {
+            current = current->left;
+        }
+        return current;
+    }
+
+    AVLTreeNode* deleteNode(AVLTreeNode* node, int value) {
+        if (!node) {
+            return node;
+        }
+
+        if (value < node->value) {
+            node->left = deleteNode(node->left, value);
+        }
+        else if (value > node->value) {
+            node->right = deleteNode(node->right, value);
         }
         else {
             if (!node->left || !node->right) {
-                AVLNode* temp = node->left ? node->left : node->right;
+                AVLTreeNode* temp = node->left ? node->left : node->right;
+
                 if (!temp) {
-                    delete node;
-                    return nullptr;
+                    temp = node;
+                    node = nullptr;
                 }
-                *node = *temp;
+                else {
+                    *node = *temp;
+                }
+
                 delete temp;
             }
             else {
-                AVLNode* temp = findMin(node->right);
+                AVLTreeNode* temp = minValueNode(node->right);
                 node->value = temp->value;
-                node->right = deleteRecursive(node->right, temp->value);
+                node->right = deleteNode(node->right, temp->value);
             }
         }
-        return balance(node);
+
+        if (!node) {
+            return node;
+        }
+
+        updateHeight(node);
+
+        int balance = getBalance(node);
+
+        if (balance > 1 && getBalance(node->left) >= 0) {
+            return rotateRight(node);
+        }
+
+        if (balance > 1 && getBalance(node->left) < 0) {
+            node->left = rotateLeft(node->left);
+            return rotateRight(node);
+        }
+
+        if (balance < -1 && getBalance(node->right) <= 0) {
+            return rotateLeft(node);
+        }
+
+        if (balance < -1 && getBalance(node->right) > 0) {
+            node->right = rotateRight(node->right);
+            return rotateLeft(node);
+        }
+
+        return node;
     }
 
-    bool searchRecursive(AVLNode* node, int value) {
-        if (!node) return false;
-        if (node->value == value) return true;
-        return value < node->value ? searchRecursive(node->left, value) : searchRecursive(node->right, value);
+    bool search(AVLTreeNode* node, int value) {
+        if (!node) {
+            return false;
+        }
+
+        if (value == node->value) {
+            return true;
+        }
+        else if (value < node->value) {
+            return search(node->left, value);
+        }
+        else {
+            return search(node->right, value);
+        }
     }
 
-    void clearRecursive(AVLNode* node) {
+    void clear(AVLTreeNode* node) {
         if (node) {
-            clearRecursive(node->left);
-            clearRecursive(node->right);
+            clear(node->left);
+            clear(node->right);
             delete node;
         }
     }
 
 public:
     AVLTree() : root(nullptr) {}
-    ~AVLTree() { clearRecursive(root); }
 
-    void insert(int value) { root = insertRecursive(root, value); }
-    void remove(int value) { root = deleteRecursive(root, value); }
-    bool search(int value) { return searchRecursive(root, value); }
+    ~AVLTree() {
+        clear(root);
+    }
 
-    vector<int> bfs() {
+    void insert(int value) {
+        root = insert(root, value);
+    }
+
+    void remove(int value) {
+        root = deleteNode(root, value);
+    }
+
+    bool search(int value) {
+        return search(root, value);
+    }
+
+    void buildFromBinaryTree(BinaryTree& binaryTree) {
+        vector<int> values = binaryTree.depthFirstTraversal();
+        for (int value : values) {
+            insert(value);
+        }
+    }
+
+    vector<int> breadthFirstTraversal() {
         vector<int> result;
         if (!root) return result;
 
-        queue<AVLNode*> q;
+        queue<AVLTreeNode*> q;
         q.push(root);
 
         while (!q.empty()) {
-            AVLNode* current = q.front();
+            AVLTreeNode* node = q.front();
             q.pop();
-            result.push_back(current->value);
-            if (current->left) q.push(current->left);
-            if (current->right) q.push(current->right);
+            result.push_back(node->value);
+
+            if (node->left) q.push(node->left);
+            if (node->right) q.push(node->right);
         }
+
         return result;
     }
 
-    vector<int> preorder() {
+    vector<int> depthFirstPreorder() {
         vector<int> result;
         if (!root) return result;
 
-        stack<AVLNode*> st;
-        st.push(root);
+        stack<AVLTreeNode*> s;
+        s.push(root);
 
-        while (!st.empty()) {
-            AVLNode* current = st.top();
-            st.pop();
-            result.push_back(current->value);
-            if (current->right) st.push(current->right);
-            if (current->left) st.push(current->left);
+        while (!s.empty()) {
+            AVLTreeNode* node = s.top();
+            s.pop();
+            result.push_back(node->value);
+
+            if (node->right) s.push(node->right);
+            if (node->left) s.push(node->left);
         }
+
         return result;
     }
 
-    vector<int> inorder() {
+    vector<int> depthFirstInorder() {
         vector<int> result;
-        stack<AVLNode*> st;
-        AVLNode* current = root;
+        stack<AVLTreeNode*> s;
+        AVLTreeNode* current = root;
 
-        while (current || !st.empty()) {
+        while (current || !s.empty()) {
             while (current) {
-                st.push(current);
+                s.push(current);
                 current = current->left;
             }
-            current = st.top();
-            st.pop();
+
+            current = s.top();
+            s.pop();
             result.push_back(current->value);
+
             current = current->right;
         }
+
         return result;
     }
 
-    vector<int> postorder() {
+    vector<int> depthFirstPostorder() {
         vector<int> result;
         if (!root) return result;
 
-        stack<AVLNode*> st1, st2;
-        st1.push(root);
+        stack<AVLTreeNode*> s1, s2;
+        s1.push(root);
 
-        while (!st1.empty()) {
-            AVLNode* current = st1.top();
-            st1.pop();
-            st2.push(current);
-            if (current->left) st1.push(current->left);
-            if (current->right) st1.push(current->right);
+        while (!s1.empty()) {
+            AVLTreeNode* node = s1.top();
+            s1.pop();
+            s2.push(node);
+
+            if (node->left) s1.push(node->left);
+            if (node->right) s1.push(node->right);
         }
 
-        while (!st2.empty()) {
-            result.push_back(st2.top()->value);
-            st2.pop();
+        while (!s2.empty()) {
+            result.push_back(s2.top()->value);
+            s2.pop();
         }
+
         return result;
     }
 };
 
-class TreeParser {
-    string input;
-    int pos;
-
-    void skipSpaces() {
-        while (pos < input.size() && isspace(input[pos])) pos++;
+string readFromFile(const string& filename) {
+    ifstream file(filename);
+    if (!file.is_open()) {
+        cout << "Error: Could not open file " << filename << endl;
+        return "";
     }
 
-    int readNumber() {
-        skipSpaces();
-        if (pos >= input.size() || !isdigit(input[pos])) {
-            throw runtime_error("Ожидалось число");
-        }
-
-        int number = 0;
-        while (pos < input.size() && isdigit(input[pos])) {
-            number = number * 10 + (input[pos] - '0');
-            pos++;
-        }
-        return number;
+    string content;
+    string line;
+    while (getline(file, line)) {
+        content += line;
     }
 
-    TreeNode* parseSubtree() {
-        skipSpaces();
-        if (pos >= input.size() || input[pos] != '(') throw runtime_error("Ожидалась '('");
-        pos++;
+    file.close();
+    return content;
+}
 
-        skipSpaces();
-        if (pos < input.size() && input[pos] == ')') {
-            pos++;
-            return nullptr;
-        }
+bool validateBinaryTreeStructure(BinaryTreeNode* node) {
+    if (!node) return true;
+    return validateBinaryTreeStructure(node->left) &&
+        validateBinaryTreeStructure(node->right);
+}
 
-        int value = readNumber();
-        TreeNode* node = new TreeNode(value);
+void printVector(const vector<int>& vec, const string& name) {
+    cout << name << ": [";
+    for (size_t i = 0; i < vec.size(); ++i) {
+        cout << vec[i];
+        if (i < vec.size() - 1) cout << ", ";
+    }
+    cout << "]" << endl;
+}
 
-        skipSpaces();
-        int childCount = 0;
+void processTree(const string& bracketString) {
+    cout << "\nProcessing bracket string: " << bracketString << endl;
 
-        while (pos < input.size() && input[pos] != ')') {
-            if (childCount >= 2) {
-                delete node;
-                throw runtime_error("У узла больше 2 потомков - не бинарное дерево");
-            }
+    BinaryTree binaryTree;
 
-            TreeNode* child = parseSubtree();
-            if (childCount == 0) node->left = child;
-            else node->right = child;
-            childCount++;
-            skipSpaces();
-        }
-
-        if (pos >= input.size() || input[pos] != ')') {
-            delete node;
-            throw runtime_error("Ожидалась ')'");
-        }
-        pos++;
-
-        return node;
+    if (!binaryTree.buildFromBracketString(bracketString)) {
+        cout << "Failed to build binary tree. Check input correctness." << endl;
+        return;
     }
 
-public:
-    BinaryTree* parse(const string& str) {
-        input = str;
-        pos = 0;
-
-        skipSpaces();
-        if (input.empty()) throw runtime_error("Пустая строка");
-
-        BinaryTree* tree = new BinaryTree();
-        TreeNode* root = parseSubtree();
-
-        skipSpaces();
-        if (pos < input.size()) {
-            delete root;
-            delete tree;
-            throw runtime_error("Лишние символы в конце");
-        }
-
-        tree->setRoot(root);
-        return tree;
+    if (!validateBinaryTreeStructure(binaryTree.getRoot())) {
+        cout << "Error: Tree is not binary!" << endl;
+        return;
     }
-};
 
-bool validateInput(const string& str) {
-    int balance = 0;
-    bool expectNumber = true;
+    cout << "✓ Binary tree built successfully" << endl;
 
-    for (size_t i = 0; i < str.size(); i++) {
-        char c = str[i];
-        if (isspace(c)) continue;
+    vector<int> dfsResult = binaryTree.depthFirstTraversal();
+    printVector(dfsResult, "Binary tree depth-first traversal");
 
-        if (c == '(') {
-            balance++;
-            expectNumber = true;
-        }
-        else if (c == ')') {
-            balance--;
-            if (balance < 0) return false;
-            expectNumber = false;
-        }
-        else if (isdigit(c)) {
-            if (!expectNumber) return false;
-            while (i < str.size() && isdigit(str[i])) i++;
-            i--;
-            expectNumber = false;
-        }
-        else {
-            return false;
-        }
-    }
-    return balance == 0;
+    AVLTree avlTree;
+    avlTree.buildFromBinaryTree(binaryTree);
+    cout << "✓ AVL tree built successfully" << endl;
+
+    cout << "\n--- AVL Tree Traversals ---" << endl;
+
+    vector<int> bfsResult = avlTree.breadthFirstTraversal();
+    printVector(bfsResult, "Breadth-first traversal");
+
+    vector<int> dfsPreorder = avlTree.depthFirstPreorder();
+    printVector(dfsPreorder, "Preorder traversal");
+
+    vector<int> dfsInorder = avlTree.depthFirstInorder();
+    printVector(dfsInorder, "Inorder traversal");
+
+    vector<int> dfsPostorder = avlTree.depthFirstPostorder();
+    printVector(dfsPostorder, "Postorder traversal");
+
+    cout << "\n--- Additional AVL Tree Operations ---" << endl;
+
+    int searchValue;
+    cout << "Enter value to search: ";
+    cin >> searchValue;
+    bool found = avlTree.search(searchValue);
+    cout << "Value " << searchValue << (found ? " found" : " not found") << " in tree" << endl;
+
+    int insertValue;
+    cout << "Enter value to insert: ";
+    cin >> insertValue;
+    avlTree.insert(insertValue);
+    cout << "Value " << insertValue << " inserted into tree" << endl;
+
+    cout << "\n--- Traversals after insertion ---" << endl;
+    printVector(avlTree.breadthFirstTraversal(), "Breadth-first traversal");
+    printVector(avlTree.depthFirstPreorder(), "Preorder traversal");
+
+    int deleteValue;
+    cout << "Enter value to delete: ";
+    cin >> deleteValue;
+    avlTree.remove(deleteValue);
+    cout << "Value " << deleteValue << " deleted from tree" << endl;
+
+    cout << "\n--- Traversals after deletion ---" << endl;
+    printVector(avlTree.breadthFirstTraversal(), "Breadth-first traversal");
+    printVector(avlTree.depthFirstPreorder(), "Preorder traversal");
 }
 
 int main() {
-    setlocale(LC_ALL, "Russian");
-    cout << "=== ЛАБОРАТОРНАЯ РАБОТА: ДЕРЕВЬЯ ===" << endl;
+    cout << "=== Laboratory Work: Trees ===" << endl;
 
-    string input;
-    ifstream file("tree.txt");
+    while (true) {
+        cout << "\nMenu:" << endl;
+        cout << "1. Enter tree manually" << endl;
+        cout << "2. Load tree from file" << endl;
+        cout << "3. Exit" << endl;
 
-    if (file.is_open()) {
-        getline(file, input);
-        file.close();
-        cout << "Из файла: " << input << endl;
-    }
-    else {
-        input = "(8 (9 (5)) (1))";
-        cout << "Файл не найден, используем пример: " << input << endl;
-    }
+        string choice;
+        cout << "Choose option: ";
+        getline(cin, choice);
 
-    if (!validateInput(input)) {
-        cout << "ОШИБКА: Неправильный формат скобочной записи!" << endl;
-        return 1;
-    }
+        if (choice == "1") {
+            string bracketString;
+            cout << "Enter bracket tree notation (e.g., (8 (9 (5)) (1)): ";
+            getline(cin, bracketString);
+            processTree(bracketString);
+        }
+        else if (choice == "2") {
+            string filename;
+            cout << "Enter filename: ";
+            getline(cin, filename);
+            string bracketString = readFromFile(filename);
+            if (!bracketString.empty()) {
+                processTree(bracketString);
+            }
+        }
+        else if (choice == "3") {
+            cout << "Exiting program." << endl;
+            break;
+        }
+        else {
+            cout << "Invalid choice. Please try again." << endl;
+        }
 
-    TreeParser parser;
-    BinaryTree* binaryTree = nullptr;
-
-    try {
-        binaryTree = parser.parse(input);
-        cout << "✓ Обычное дерево создано!" << endl;
-
-        vector<int> dfsResult = binaryTree->dfs();
-        cout << "Обход в глубину: ";
-        for (int val : dfsResult) cout << val << " ";
-        cout << endl;
-
-    }
-    catch (const exception& e) {
-        cout << "Ошибка парсинга: " << e.what() << endl;
-        return 1;
-    }
-
-    AVLTree avlTree;
-    vector<int> elements = binaryTree->dfs();
-    for (int val : elements) avlTree.insert(val);
-
-    cout << "\n✓ АВЛ дерево создано!" << endl;
-
-    cout << "\nДемонстрация поиска:" << endl;
-    for (int val : elements) {
-        cout << "Поиск " << val << ": " << (avlTree.search(val) ? "найден" : "не найден") << endl;
+        cin.clear();
     }
 
-    cout << "\nОБХОД В ШИРИНУ: ";
-    vector<int> bfs = avlTree.bfs();
-    for (int val : bfs) cout << val << " ";
-
-    cout << "\nПРЯМОЙ ОБХОД: ";
-    vector<int> pre = avlTree.preorder();
-    for (int val : pre) cout << val << " ";
-
-    cout << "\nЦЕНТРИРОВАННЫЙ: ";
-    vector<int> in = avlTree.inorder();
-    for (int val : in) cout << val << " ";
-
-    cout << "\nОБРАТНЫЙ: ";
-    vector<int> post = avlTree.postorder();
-    for (int val : post) cout << val << " ";
-    cout << endl;
-
-    if (!elements.empty()) {
-        int toRemove = elements[0];
-        cout << "\nДемонстрация удаления: удаляем " << toRemove << endl;
-        avlTree.remove(toRemove);
-        cout << "После удаления - обход в ширину: ";
-        vector<int> afterRemove = avlTree.bfs();
-        for (int val : afterRemove) cout << val << " ";
-        cout << endl;
-    }
-
-    delete binaryTree;
     return 0;
 }
